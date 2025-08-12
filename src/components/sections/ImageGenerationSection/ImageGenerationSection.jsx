@@ -3,8 +3,11 @@ import { useNavigate } from "react-router-dom";
 import "./ImageGenerationSection.css";
 import { dalleImagePrompt } from "../../../prompts/openai/dalleImagePrompt";
 import { API_URLS } from "../../../config/api";
+import { uploadPhoto } from "../../../config/uploadPhoto";
+import { generateImagePrompt } from "../../../config/generateImagePrompt";
 import { downloadImage } from "../../../utils/downloadImage";
 import { replicateCatImagePrompt, replicateImagePrompt } from "../../../prompts/replicate/replicateImagePrompt";
+import { generateImageReplicate } from "../../../config/generateImageReplicate";
 
 const ImageGenerationSection = forwardRef(({ onImageGenerated, scrollToNextSection, formData, onGenerateImageRef, greetingTextRef }, ref) => {
   const [isGenerating, setIsGenerating] = useState(false);
@@ -53,25 +56,7 @@ const ImageGenerationSection = forwardRef(({ onImageGenerated, scrollToNextSecti
         };
 
         const photoBase64 = await convertToBase64(formData.photo);
-        
-        const uploadResponse = await fetch(API_URLS.UPLOAD_PHOTO, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({ 
-            photoBase64: photoBase64 
-          }),
-        });
-
-        if (!uploadResponse.ok) {
-          throw new Error('Помилка при завантаженні фото');
-        }
-
-        const uploadData = await uploadResponse.json();
-        photoUrl = uploadData.url;
-        
-        console.log('Фото завантажено на Cloudinary:', photoUrl);
+        photoUrl = await uploadPhoto(photoBase64);
       }
       
       // Крок 2: Генерація промпта з URL фото
@@ -80,119 +65,31 @@ const ImageGenerationSection = forwardRef(({ onImageGenerated, scrollToNextSecti
         photoUrl: photoUrl
       };
       
-      const prompt = replicateImagePrompt(formDataWithUrl);
-      console.log('Промпт для replicate:', prompt);
+      const generatedPrompt = replicateImagePrompt(formDataWithUrl);
+      console.log('Промпт для replicate:', generatedPrompt);
       
-      const response = await fetch(API_URLS.GENERATE_IMAGE_PROMPT, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ prompt }),
-      });
-
-      if (!response.ok) {
-        if (response.status === 429) {
-          throw new Error('Перевищено ліміт запитів. Будь ласка, спробуйте через кілька хвилин.');
-        } else if (response.status === 500) {
-          throw new Error('Помилка сервера. Спробуйте пізніше.');
-        } else if (response.status === 503) {
-          throw new Error('Сервіс тимчасово недоступний. Спробуйте пізніше.');
-        } else {
-          throw new Error(`Помилка при генерації промпта: ${response.status} ${response.statusText}`);
-        }
-         console.log('Згенерований промпт:', data.generatedPrompt);
-      }
-
-      const data = await response.json();
+      const data = await generateImagePrompt(generatedPrompt);
       
       if (data.generatedPrompt) {
         console.log('Згенерований промпт:', data.generatedPrompt);
-        // Крок 3: Генерація зображення через Make.com webhook
+        // Крок 3: Генерація зображення через Replicate
         try {
           console.log('Відправляю запит до Replicate.');
-          
-          // Перевіряємо наявність обов'язкових даних
           if (!data.generatedPrompt) {
             throw new Error('Відсутній згенерований промпт');
           }
-          
-          // Спробуємо FormData формат
-          const formDataForMake = new FormData();
-          formDataForMake.append('prompt', data.generatedPrompt);
-          formDataForMake.append('imageUrl', photoUrl);
-          
-          if (formDataWithUrl.photo) {
-            console.log('✅ Використовую реальне фото користувача:', photoUrl);
-          } else {
-            console.log('⚠️ Використовую ваше зображення як заглушку:', photoUrl);
-          }
-          
-          formDataForMake.append('style', formDataWithUrl.cardStyle || '');
-          formDataForMake.append('mood', formDataWithUrl.cardMood || '');
-          formDataForMake.append('hobby', formDataWithUrl.hobby || '');
-          formDataForMake.append('trait', formDataWithUrl.trait || '');
-          formDataForMake.append('greeting', formDataWithUrl.greetingText || '');
-          
-          // Крок 3: Генерація зображення через локальний бекенд Replicate
-          const imageGenerationResponse = await fetch(API_URLS.GENERATE_IMAGE_REPLICATE, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              modelId: "black-forest-labs/flux-kontext-pro",
-              input: {
-                prompt: "Make this a 90s cartoon",
-                input_image: photoUrl,
-                aspect_ratio: "match_input_image",
-                // strength: 0.8 // можна додати додаткові параметри за потреби
-              }
-            }),
-          });
-
-
-          if (imageGenerationResponse.ok) {
-            const responseText = await imageGenerationResponse.text();
-
-            console.log('Відповідь від Replicate (text):', responseText);
-
-            // Якщо відповідь - це просто URL зображення
-            if (responseText && (responseText.startsWith('http') || responseText.startsWith('"http'))) {
-              const generatedImageUrl = responseText.trim().replace(/"/g, '');
-              setGeneratedImageUrl(generatedImageUrl);
-              
-              if (onImageGenerated) {
-                onImageGenerated("finalGeneratedImageUrl", generatedImageUrl);
-              }
-            } else {
-              // Спробуємо парсити як JSON
-              try {
-                const imageData = JSON.parse(responseText);
-                console.log('Дані від replicate (JSON):', imageData);
-                
-                if (imageData.generatedImageUrl) {
-                  setGeneratedImageUrl(imageData.generatedImageUrl);
-                  
-                  if (onImageGenerated) {
-                    onImageGenerated("finalGeneratedImageUrl", imageData.generatedImageUrl);
-                  }
-                } else {
-                  console.warn('replicateповернув дані без generatedImageUrl:', imageData);
-                }
-              } catch (parseError) {
-                console.warn('Не вдалося парсити відповідь replicateяк JSON:', parseError);
-              }
+          const generatedImageUrl = await generateImageReplicate({
+            modelId: "black-forest-labs/flux-kontext-pro",
+            input: {
+              prompt: "Make this a 90s cartoon",
+              input_image: photoUrl,
+              aspect_ratio: "match_input_image",
+              // strength: 0.8 // можна додати додаткові параметри за потреби
             }
-          } else {
-            const errorText = await imageGenerationResponse.text();
-            console.error('❌ replicateпомилка:', {
-              status: imageGenerationResponse.status,
-              statusText: imageGenerationResponse.statusText,
-              body: errorText,
-            });
-            
-            console.warn('Помилка при генерації фінального зображення через replicate');
+          });
+          setGeneratedImageUrl(generatedImageUrl);
+          if (onImageGenerated) {
+            onImageGenerated("finalGeneratedImageUrl", generatedImageUrl);
           }
         } catch (makeError) {
           console.error('Помилка replicate:', makeError);
