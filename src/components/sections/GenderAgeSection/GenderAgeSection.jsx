@@ -2,48 +2,44 @@ import React, { useState, forwardRef } from "react";
 import "./GenderAgeSection.css";
 
 const GenderAgeSection = forwardRef(({ onGenderChange, onAgeChange, scrollToNextSection }, ref) => {
-  const [selectedGender, setSelectedGender] = useState("");
+   const [selectedGender, setSelectedGender] = useState("");
   const [selectedAge, setSelectedAge] = useState("");
+  const [name, setName] = useState("");
 
   const genderOptions = [
     { value: "male", label: "Чоловік", icon: "👨" },
     { value: "female", label: "Жінка", icon: "👩" }
   ];
 
-   const handleGenderSelect = (gender) => {
+
+  const handleGenderSelect = (gender) => {
     setSelectedGender(gender.value);
-    
     if (onGenderChange) {
       onGenderChange("gender", gender.value);
     }
-    
-    // Автоматично скролити тільки якщо обидва поля заповнені
-    if (selectedAge && scrollToNextSection) {
+  };
+
+  const handleAgeInputChange = (value) => {
+    setSelectedAge(value);
+    if (onAgeChange) {
+      onAgeChange("age", value);
+    }
+  };
+
+  const handleNameInputChange = (value) => {
+    setName(value);
+    if (onGenderChange) {
+      onGenderChange("name", value);
+    }
+  };
+
+  // Скрол при деактивації поля імені
+  const handleNameBlur = () => {
+    if (selectedGender && selectedAge && name.trim().length > 0 && scrollToNextSection) {
       setTimeout(() => scrollToNextSection(), 300);
     }
   };
 
-
-  const handleAgeInputChange = (value) => {
-    const age = parseInt(value);
-    if (!isNaN(age) && age > 0 && age <= 120) {
-      setSelectedAge(age);
-      
-      if (onAgeChange) {
-        onAgeChange("age", age);
-      }
-      
-      // Автоматично скролити тільки якщо обидва поля заповнені
-      if (selectedGender && scrollToNextSection) {
-        setTimeout(() => scrollToNextSection(), 300);
-      }
-    } else if (value === "") {
-      setSelectedAge("");
-      if (onAgeChange) {
-        onAgeChange("age", "");
-      }
-    }
-  };
 
   return (
     <section ref={ref} className="gender-age-section">
@@ -68,24 +64,36 @@ const GenderAgeSection = forwardRef(({ onGenderChange, onAgeChange, scrollToNext
         </div>
 
         <div className="age-group">
-          {/* <h3>Вік</h3> */}
-          <div className="age-input-container">
-            <input
-              type="number"
-              min="1"
-              max="120"
-              placeholder="Вік"
-              value={selectedAge}
-              onChange={(e) => handleAgeInputChange(e.target.value)}
-              className="age-input"
-            />
-            <span className="age-label"></span>
+          <div className="age-name-row">
+            <div className="age-input-container">
+              <input
+                type="number"
+                min="1"
+                max="120"
+                placeholder="Вік"
+                value={selectedAge}
+                onChange={(e) => handleAgeInputChange(e.target.value)}
+                className="age-input"
+              />
+              <span className="age-label"></span>
+            </div>
+            <div className="name-input-container">
+              <input
+                type="text"
+                value={name}
+                onChange={(e) => handleNameInputChange(e.target.value)}
+                onBlur={handleNameBlur}
+                placeholder="Ім'я"
+                className="name-input"
+              />
+            </div>
           </div>
 
         
         </div>
       </div>
     </section>
+
   );
 });
 
